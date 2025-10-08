@@ -2,226 +2,702 @@
 <html>
   <head>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.16/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+      /* Wikipedia-style formatting */
+      #text-search-content {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Lato, Helvetica, Arial, sans-serif;
+        color: #202122;
+        line-height: 1.6;
+      }
+
+      #text-search-content a {
+        color: #0645ad;
+        text-decoration: none;
+      }
+
+      #text-search-content a:visited {
+        color: #0b0080;
+      }
+
+      #text-search-content a:hover {
+        text-decoration: underline;
+      }
+
+      #text-search-content sup {
+        line-height: 1;
+      }
+
+      #text-search-content .reference {
+        font-size: 0.8em;
+        font-weight: normal;
+      }
+
+      #text-search-content .mw-editsection {
+        display: none;
+      }
+
+      #text-search-content p {
+        margin-bottom: 0.5em;
+      }
+
+      #text-search-content h2 {
+        color: #202122;
+        font-family: 'Linux Libertine', Georgia, Times, serif;
+        font-size: 1.5rem;
+        font-weight: normal;
+        margin-top: 1.5rem;
+        margin-bottom: 0.5rem;
+        border-bottom: 1px solid #a2a9b1;
+        padding-bottom: 0.25rem;
+      }
+
+      #text-search-content h3 {
+        color: #202122;
+        font-family: 'Linux Libertine', Georgia, Times, serif;
+        font-size: 1.25rem;
+        font-weight: normal;
+        margin-top: 1.25rem;
+        margin-bottom: 0.25rem;
+      }
+
+      #text-search-content ul, #text-search-content ol {
+        margin-left: 1.6em;
+        margin-bottom: 0.5em;
+      }
+
+      #text-search-content .infobox {
+        float: right;
+        clear: right;
+        margin: 0 0 1em 1em;
+        width: 22em;
+        border: 1px solid #a2a9b1;
+        background-color: #f8f9fa;
+        padding: 0.5em;
+      }
+
+      #text-search-content table {
+        border-collapse: collapse;
+      }
+
+      #text-search-content .thumbinner {
+        border: 1px solid #c8ccd1;
+        padding: 3px;
+        background-color: #f8f9fa;
+        font-size: 94%;
+        text-align: center;
+      }
+
+      #text-search-content .thumbcaption {
+        padding: 3px;
+        font-size: 94%;
+        line-height: 1.4em;
+      }
+    </style>
     <script>
-      let selectedSize = '600';
-      let lastSearchQuery = '';
+      document.addEventListener('DOMContentLoaded', () => {
+        const TAB_IMAGE = 'image';
+        const TAB_TEXT = 'text';
+        const DEFAULT_IMAGE_WIDTH = 600;
+        const REFERENCE_SELECTOR = '.reference, .mw-ref';
+        const LOADING_TICK_MS = 200;
+        const LOADING_INCREMENT_MIN = 4;
+        const LOADING_INCREMENT_MAX = 10;
+        const MAX_LOADING_PROGRESS = 90;
 
-      function switchTabs(activeTab) {
-        console.log('Switching to tab:', activeTab);
-        // Set all tabs to inactive state first
-        document.getElementById('tab-image').classList.remove('border-blue-500', 'text-blue-600', 'border-b-2');
-        document.getElementById('tab-text').classList.remove('border-blue-500', 'text-blue-600', 'border-b-2');
-        document.getElementById('tab-image').classList.add('text-gray-500', 'border-transparent');
-        document.getElementById('tab-text').classList.add('text-gray-500', 'border-transparent');
+        const state = {
+          activeTab: TAB_IMAGE,
+          lastQuery: '',
+          loadingProgress: 0,
+          loadingIntervalId: null,
+        };
 
-        document.getElementById('tab-image-content').classList.add('hidden');
-        document.getElementById('tab-text-content').classList.add('hidden');
+        const elements = {
+          tabImage: document.getElementById('tab-image'),
+          tabText: document.getElementById('tab-text'),
+          tabImageContent: document.getElementById('tab-image-content'),
+          tabTextContent: document.getElementById('tab-text-content'),
+          imageQueryInput: document.getElementById('search-query'),
+          textQueryInput: document.getElementById('text-search-query'),
+          imageSearchButton: document.getElementById('search-image-button'),
+          textSearchButton: document.getElementById('search-text-button'),
+          imageResults: document.getElementById('search-results'),
+          textTitle: document.getElementById('text-search-title'),
+          textContent: document.getElementById('text-search-content'),
+          loadingIndicator: document.getElementById('loadingIndicator'),
+        };
 
-        // Then set the clicked tab to active state
-        document.getElementById(activeTab).classList.remove('text-gray-500', 'border-transparent');  
-        document.getElementById(activeTab).classList.add('border-blue-500', 'text-blue-600', 'border-b-2');
-        document.getElementById(activeTab + '-content').classList.remove('hidden');
+        const loadingBarFill = elements.loadingIndicator
+          ? elements.loadingIndicator.querySelector('div')
+          : null;
 
-        // Update the input fields with the last search query
-        document.getElementById('search-query').value = lastSearchQuery;
-        document.getElementById('text-search-query').value = lastSearchQuery;
-
-        // Update the aria-current attribute for accessibility
-        document.getElementById('tab-image').setAttribute('aria-current', activeTab === 'tab-image' ? 'page' : 'false');
-        document.getElementById('tab-text').setAttribute('aria-current', activeTab === 'tab-text' ? 'page' : 'false');
-      }
-
-      let loadingProgress = 0;
-      let loadingInterval = null;
-function showLoadingIndicator(show) {
-  console.log("UI: Showing loading indicator:", show);
-  const loadingIndicator = document.getElementById('loadingIndicator');
-  const progressBar = loadingIndicator.querySelector('div');
-  
-  if (show === true) {
-    loadingIndicator.classList.remove('hidden');
-    loadingProgress = 0;
-    progressBar.style.width = '0%';
-    
-    if (loadingInterval) clearInterval(loadingInterval);
-    loadingInterval = setInterval(() => {
-      loadingProgress += Math.random() * 10;
-      if (loadingProgress > 90) loadingProgress = 90;
-      progressBar.style.width = `${loadingProgress}%`;
-    }, 200);
-  } else {
-    if (loadingInterval) {
-      clearInterval(loadingInterval);
-      loadingInterval = null;
-    }
-    progressBar.style.width = '100%';
-    setTimeout(() => {
-      loadingIndicator.classList.add('hidden');
-      progressBar.style.width = '0%';
-    }, 300);
-  }
-}
-
-      function hideLoadingIndicator() {
-        document.getElementById('loadingIndicator').classList.add('hidden');
-        document.getElementById('loadingIndicator').classList.remove('flex');
-
-      }
-
-      async function searchImages() {
-        showLoadingIndicator();
-        let query = document.getElementById('search-query').value.trim();
-        lastSearchQuery = query;
-
-        if (!validateSearchQuery(query) || !query.match(/^[a-zA-Z0-9 _-]{1,100}$/)) {
-          alert('Please enter a valid search term using only letters, numbers, spaces, underscores, and hyphens.');
-          hideLoadingIndicator();
-          return;
+        function notify(message) {
+          parent.postMessage({ pluginMessage: { type: 'notify', message } }, '*');
         }
 
-        try {
+        function setLoadingIndicator(show) {
+          if (!elements.loadingIndicator || !loadingBarFill) {
+            return;
+          }
+
+          if (show) {
+            elements.loadingIndicator.classList.remove('hidden');
+            state.loadingProgress = 0;
+            loadingBarFill.style.width = '0%';
+
+            if (state.loadingIntervalId !== null) {
+              clearInterval(state.loadingIntervalId);
+            }
+
+            state.loadingIntervalId = window.setInterval(() => {
+              const increment =
+                LOADING_INCREMENT_MIN +
+                Math.random() * (LOADING_INCREMENT_MAX - LOADING_INCREMENT_MIN);
+              state.loadingProgress = Math.min(
+                state.loadingProgress + increment,
+                MAX_LOADING_PROGRESS
+              );
+              loadingBarFill.style.width = `${state.loadingProgress}%`;
+            }, LOADING_TICK_MS);
+          } else {
+            if (state.loadingIntervalId !== null) {
+              clearInterval(state.loadingIntervalId);
+              state.loadingIntervalId = null;
+            }
+            loadingBarFill.style.width = '100%';
+            window.setTimeout(() => {
+              elements.loadingIndicator.classList.add('hidden');
+              loadingBarFill.style.width = '0%';
+              state.loadingProgress = 0;
+            }, 300);
+          }
+        }
+
+        function switchTab(tab) {
+          state.activeTab = tab;
+          toggleTab(elements.tabImage, elements.tabImageContent, tab === TAB_IMAGE);
+          toggleTab(elements.tabText, elements.tabTextContent, tab === TAB_TEXT);
+          syncSearchInputs();
+        }
+
+        function toggleTab(tabElement, contentElement, isActive) {
+          if (!tabElement || !contentElement) {
+            return;
+          }
+
+          tabElement.classList.toggle('text-blue-600', isActive);
+          tabElement.classList.toggle('border-blue-500', isActive);
+          tabElement.classList.toggle('border-b-2', isActive);
+          tabElement.classList.toggle('text-gray-500', !isActive);
+          tabElement.classList.toggle('border-transparent', !isActive);
+          tabElement.setAttribute('aria-current', isActive ? 'page' : 'false');
+          contentElement.classList.toggle('hidden', !isActive);
+        }
+
+        function syncSearchInputs() {
+          if (elements.imageQueryInput) {
+            elements.imageQueryInput.value = state.lastQuery;
+          }
+          if (elements.textQueryInput) {
+            elements.textQueryInput.value = state.lastQuery;
+          }
+        }
+
+        function validateQuery(query) {
+          if (!query) {
+            notify('Please enter a search term to continue.');
+            return false;
+          }
+          if (query.length > 120) {
+            notify('Please shorten the search term (120 character limit).');
+            return false;
+          }
+          if (/[<>]/.test(query)) {
+            notify('Angle brackets are not allowed in search terms.');
+            return false;
+          }
+          return true;
+        }
+
+        function setControlsDisabled(target, disabled) {
+          if (target === TAB_IMAGE) {
+            if (elements.imageSearchButton) {
+              elements.imageSearchButton.disabled = disabled;
+            }
+            if (elements.imageQueryInput) {
+              elements.imageQueryInput.disabled = disabled;
+            }
+          } else {
+            if (elements.textSearchButton) {
+              elements.textSearchButton.disabled = disabled;
+            }
+            if (elements.textQueryInput) {
+              elements.textQueryInput.disabled = disabled;
+            }
+          }
+        }
+
+        async function handleImageSearch() {
+          if (!elements.imageQueryInput || !elements.imageResults) {
+            return;
+          }
+
+          const query = elements.imageQueryInput.value.trim();
+          if (!validateQuery(query)) {
+            return;
+          }
+
+          state.lastQuery = query;
+          syncSearchInputs();
+          setControlsDisabled(TAB_IMAGE, true);
+          setLoadingIndicator(true);
+          elements.imageResults.innerHTML =
+            '<p class="text-sm text-gray-500">Searching images…</p>';
+
+          try {
+            const results = await fetchImageResults(query);
+            renderImageResults(results);
+          } catch (error) {
+            console.error('Image search failed:', error);
+            elements.imageResults.innerHTML =
+              '<p class="text-sm text-red-600">There was a problem fetching the search results. Please try again later.</p>';
+            notify('Unable to load images right now.');
+          } finally {
+            setControlsDisabled(TAB_IMAGE, false);
+            setLoadingIndicator(false);
+          }
+        }
+
+        async function fetchImageResults(query) {
           const response = await fetch(
             `https://commons.wikimedia.org/w/api.php?action=query&list=search&format=json&origin=*&srsearch=${encodeURIComponent(
               query
             )}&srnamespace=6&srlimit=20`
           );
-          if (!response.ok) throw new Error('Network response was not ok.');
+
+          if (!response.ok) {
+            throw new Error(`Search request failed (${response.status})`);
+          }
+
           const data = await response.json();
+          const searchResults = data?.query?.search ?? [];
 
-          const searchResultsContainer = document.getElementById('search-results');
-          searchResultsContainer.innerHTML = '';
-          searchResultsContainer.classList.remove('flex', 'hidden'); // Ensure container is not flex or hidden
+          const imageResults = searchResults.filter((result) =>
+            /\.(png|jpe?g)$/i.test(result.title)
+          );
 
-          // If there are no search results, display a message
-          if (data.query.search.length === 0) {
-            searchResultsContainer.innerHTML = '<p>No images found. Try a different search term.</p>';
-            searchResultsContainer.classList.add('hidden'); // Hide results container
-          } else {
-            // Loop through each result and create image elements
-            for (const result of data.query.search) {
-              if (result.title.toLowerCase().endsWith('.png') || result.title.toLowerCase().endsWith('.jpeg') || result.title.toLowerCase().endsWith('.jpg')) {
-                const imgResponse = await fetch(
-                  `https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo&format=json&origin=*&iiprop=url&iiurlwidth=${selectedSize}&titles=${encodeURIComponent(
-                    result.title
-                  )}`
-                );
-                if (!imgResponse.ok) throw new Error('Image fetch was not ok.');
-                const imgData = await imgResponse.json();
-
-                const imgInfo = Object.values(imgData.query.pages)[0].imageinfo[0];
-                const imgElement = document.createElement('img');
-                imgElement.src = imgInfo.thumburl;
-                imgElement.title = result.title;
-                imgElement.classList.add('cursor-pointer');
-                imgElement.onclick = () => {
-                  window.parent.postMessage({ pluginMessage: { type: 'insert-image', url: imgInfo.url, fillSelected: true } }, '*');
-                };
-
-                searchResultsContainer.appendChild(imgElement);
-              }
-            }
-            searchResultsContainer.classList.remove('hidden'); // Show results container
-            searchResultsContainer.classList.add('flex'); // Add flex to display results
-          }
-        } catch (error) {
-          console.error('Fetch error:', error);
-          searchResultsContainer.innerHTML = '<p>There was a problem fetching the search results. Please try again later.</p>';
-          searchResultsContainer.classList.add('hidden'); // Hide results container on error
-        } finally {
-          hideLoadingIndicator();
-        }
-      }
-        async function searchWikipedia() {
-          showLoadingIndicator()
-          const query = document.getElementById('text-search-query').value.trim(); // Trim the query for any leading or trailing spaces
-          lastSearchQuery = query;
-
-          // Call validateSearchQuery and return early if validation fails
-          if (!validateSearchQuery(query)) {
-            document.getElementById('loadingIndicator').classList.add('hidden'); // Hide loading indicator if validation fails
-            return; // Stop execution if the query is not valid
-          }
-
-          try {
-            const response = await fetch(
-              `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&format=json&origin=*&titles=${encodeURIComponent(
-                query
+          const detailRequests = imageResults.map(async (result) => {
+            const detailResponse = await fetch(
+              `https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo&format=json&origin=*&iiprop=url&iiurlwidth=${DEFAULT_IMAGE_WIDTH}&titles=${encodeURIComponent(
+                result.title
               )}`
             );
-            if (!response.ok) throw new Error('Network response was not ok.');
-
-            const data = await response.json();
-
-            if (data && data.query && data.query.pages) {
-              const page = Object.values(data.query.pages)[0];
-              if (page && page.extract) {
-                const pageTitle = page.title;
-                const pageContent = page.extract;
-                document.getElementById('text-search-title').innerText = pageTitle;
-                document.getElementById('text-search-content').innerHTML = pageContent;
-              } else {
-                // Handle the case where the extract is undefined
-                document.getElementById('text-search-title').innerText = 'No content available';
-                document.getElementById('text-search-content').innerHTML = 'The search did not return any results or content is not available for this page.';
-              }
-            } else {
-              // Handle the case where the response or pages are undefined
-              document.getElementById('text-search-title').innerText = 'No content available';
-              document.getElementById('text-search-content').innerHTML = 'The search did not return any results or content is not available for this page.';
+            if (!detailResponse.ok) {
+              throw new Error(
+                `Image info request failed (${detailResponse.status})`
+              );
             }
-            styleSections(); // Ensure the newly loaded content is styled appropriately
+            const detailData = await detailResponse.json();
+            const page = Object.values(detailData.query.pages)[0];
+            if (!page?.imageinfo?.length) {
+              return null;
+            }
+            const info = page.imageinfo[0];
+            return {
+              title: result.title,
+              url: info.url,
+              thumbUrl: info.thumburl,
+            };
+          });
+
+          const settled = await Promise.allSettled(detailRequests);
+          return settled
+            .filter((entry) => entry.status === 'fulfilled' && entry.value)
+            .map((entry) => entry.value);
+        }
+
+        function renderImageResults(results) {
+          if (!elements.imageResults) {
+            return;
+          }
+
+          elements.imageResults.innerHTML = '';
+
+          if (!results.length) {
+            elements.imageResults.innerHTML =
+              '<p class="text-sm text-gray-500">No images found. Try a different search term.</p>';
+            return;
+          }
+
+          const fragment = document.createDocumentFragment();
+          results.forEach((result) => {
+            if (!result) {
+              return;
+            }
+            const img = document.createElement('img');
+            img.src = result.thumbUrl;
+            img.alt = result.title;
+            img.title = result.title;
+            img.loading = 'lazy';
+            img.className = 'cursor-pointer rounded shadow';
+            img.addEventListener('click', () => {
+              parent.postMessage(
+                {
+                  pluginMessage: {
+                    type: 'insert-image',
+                    url: result.url,
+                    fillSelected: true,
+                  },
+                },
+                '*'
+              );
+            });
+            fragment.appendChild(img);
+          });
+
+          elements.imageResults.appendChild(fragment);
+        }
+
+        async function handleTextSearch() {
+          if (
+            !elements.textQueryInput ||
+            !elements.textContent ||
+            !elements.textTitle
+          ) {
+            return;
+          }
+
+          const query = elements.textQueryInput.value.trim();
+          if (!validateQuery(query)) {
+            return;
+          }
+
+          state.lastQuery = query;
+          syncSearchInputs();
+          setControlsDisabled(TAB_TEXT, true);
+          setLoadingIndicator(true);
+          elements.textTitle.textContent = '';
+          elements.textContent.innerHTML =
+            '<p class="text-sm text-gray-500">Fetching article…</p>';
+
+          try {
+            const page = await fetchWikipediaPage(query);
+            if (page) {
+              elements.textTitle.textContent = page.title;
+              elements.textContent.innerHTML = page.content;
+              removeNonTextElements(elements.textContent);
+              makeContentLinksAbsolute(elements.textContent);
+              makeContentClickable();
+              styleSections();
+            } else {
+              elements.textTitle.textContent = 'Page not found';
+              elements.textContent.innerHTML = `The page "${query}" does not exist on Wikipedia. Please try a different search term.`;
+            }
           } catch (error) {
-            console.error('Fetch error:', error);
-            // Handle fetch errors (e.g., network issues)
-            document.getElementById('text-search-title').innerText = 'Error';
-            document.getElementById('text-search-content').innerHTML = 'There was a problem fetching the search results. Please try again later.';
+            console.error('Wikipedia fetch failed:', error);
+            elements.textTitle.textContent = 'Error';
+            elements.textContent.innerHTML =
+              'There was a problem fetching the search results. Please try again later.';
+            notify('Unable to load Wikipedia content right now.');
           } finally {
-            document.getElementById('loadingIndicator').classList.add('hidden'); // Hide loading indicator after processing response
+            setControlsDisabled(TAB_TEXT, false);
+            setLoadingIndicator(false);
           }
         }
 
-      
-      function styleSections() {
-        const content = document.getElementById('text-search-content');
-        const sectionHeaders = content.getElementsByTagName('h2');
-        const subSectionHeaders = content.getElementsByTagName('h3');
-        for (let header of sectionHeaders) {
-          header.style.color = '#202122';
-          header.style.fontFamily = 'serif';
-          header.style.fontSize = '1.5rem';
-          header.style.marginTop = '1.5rem';
-          header.style.marginBottom = '0.5rem';
+        async function fetchWikipediaPage(query) {
+          const response = await fetch(
+            `https://en.wikipedia.org/w/api.php?action=parse&format=json&origin=*&page=${encodeURIComponent(
+              query
+            )}&prop=text&disableeditsection=1`
+          );
+
+          if (!response.ok) {
+            throw new Error(`Wikipedia request failed (${response.status})`);
+          }
+
+          const data = await response.json();
+          if (data?.parse?.text?.['*']) {
+            return {
+              title: data.parse.title,
+              content: data.parse.text['*'],
+            };
+          }
+          return null;
         }
-        for (let header of subSectionHeaders) {
-          header.style.color = '#202122';
-          header.style.fontFamily = 'serif';
-          header.style.fontSize = '1.25rem';
-          header.style.marginTop = '1.25rem';
-          header.style.marginBottom = '0.25rem';
+
+        function removeNonTextElements(root) {
+          const selectors = [
+            'img',
+            'video',
+            'audio',
+            'iframe',
+            'figure',
+            'picture',
+            '.thumb',
+            '.thumbinner',
+            '.thumbcaption',
+            '.gallery',
+            '.navbox',
+            '.vertical-navbox',
+            '.sidebar',
+            '.mw-kartographer-map',
+            '.infobox',
+            '.metadata',
+            '.mbox',
+            '.ambox',
+            '.tmbox',
+            'table',
+            'script',
+            'style',
+            'noscript',
+            'form',
+          ];
+
+          root.querySelectorAll(selectors.join(', ')).forEach((node) => {
+            node.remove();
+          });
         }
-      }
-      function validateSearchQuery(query) {
-      if (query === '') {
-        // Use Figma's UI API to show a dialog box
-        parent.postMessage({ pluginMessage: { type: 'notify', message: 'Please enter a search term to continue.' } }, '*');
-        return false;
-      } else if (!query.match(/^[a-zA-Z0-9 _-]{1,100}$/)) {
-        // If you want to notify users about invalid characters
-        parent.postMessage({ pluginMessage: { type: 'notify', message: 'Please enter a valid search term using only letters, numbers, spaces, underscores, and hyphens.' } }, '*');
-        return false;
-      }
-      return true;
-  }
-    
-  window.showLoadingIndicator = showLoadingIndicator;
-  window.onmessage = (event) => {
-    console.log("UI: Received message:", event.data.pluginMessage);
-    if (event.data.pluginMessage && event.data.pluginMessage.type === 'showLoading') {
-      const show = event.data.pluginMessage.show === true;
-      console.log("UI: Showing loading indicator:", show);
-      showLoadingIndicator(show);
-    }
-  };
+
+        function makeContentLinksAbsolute(root) {
+          const links = Array.from(root.getElementsByTagName('a'));
+          links.forEach((link) => {
+            const href = link.getAttribute('href');
+            if (!href) {
+              return;
+            }
+            if (href.startsWith('/wiki/')) {
+              link.setAttribute('href', `https://en.wikipedia.org${href}`);
+              link.setAttribute('target', '_blank');
+            } else if (href.startsWith('#')) {
+              return;
+            } else if (!href.startsWith('http')) {
+              link.setAttribute('href', `https://en.wikipedia.org${href}`);
+              link.setAttribute('target', '_blank');
+            } else {
+              link.setAttribute('target', '_blank');
+            }
+          });
+        }
+
+        function makeContentClickable() {
+          if (!elements.textContent) {
+            return;
+          }
+
+          const clickableElements = elements.textContent.querySelectorAll(
+            'p, h1, h2, h3, h4, h5, h6, li'
+          );
+
+          clickableElements.forEach((element) => {
+            element.style.cursor = 'pointer';
+            element.style.transition = 'background-color 0.2s ease';
+
+            element.addEventListener('mouseenter', () => {
+              element.style.backgroundColor = '#f0f0f0';
+            });
+            element.addEventListener('mouseleave', () => {
+              element.style.backgroundColor = 'transparent';
+            });
+            element.addEventListener('click', (event) => {
+              event.stopPropagation();
+              insertTextIntoFigma(element);
+            });
+          });
+        }
+
+        function insertTextIntoFigma(element) {
+          const richText = extractFormattedText(element);
+          parent.postMessage(
+            {
+              pluginMessage: {
+                type: 'insert-formatted-text',
+                richText,
+              },
+            },
+            '*'
+          );
+        }
+
+        function extractFormattedText(element) {
+          const segments = [];
+          processNode(element, segments);
+          return segments;
+        }
+
+        function processNode(node, segments) {
+          if (shouldSkipNode(node)) {
+            return;
+          }
+
+          if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.textContent;
+            if (text) {
+              segments.push({
+                text,
+                format: getCurrentFormat(node.parentElement),
+              });
+            }
+            return;
+          }
+
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            node.childNodes.forEach((child) => processNode(child, segments));
+          }
+        }
+
+        function shouldSkipNode(node) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            const parent = node.parentElement;
+            return Boolean(parent && parent.closest(REFERENCE_SELECTOR));
+          }
+
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const element = node;
+            if (
+              element.classList?.contains('reference') ||
+              element.classList?.contains('mw-ref')
+            ) {
+              return true;
+            }
+            if (
+              element.closest?.(REFERENCE_SELECTOR) &&
+              element.tagName?.toLowerCase() === 'sup'
+            ) {
+              return true;
+            }
+          }
+
+          return false;
+        }
+
+        function getCurrentFormat(element) {
+          const format = {
+            bold: false,
+            italic: false,
+            link: null,
+            superscript: false,
+            subscript: false,
+            headingLevel: null,
+          };
+
+          let current = element;
+          while (current && current.id !== 'text-search-content') {
+            const tagName = current.tagName?.toLowerCase();
+
+            if (tagName === 'b' || tagName === 'strong') {
+              format.bold = true;
+            }
+            if (tagName === 'i' || tagName === 'em') {
+              format.italic = true;
+            }
+            if (tagName === 'a') {
+              format.link = current.getAttribute('href');
+            }
+            if (tagName === 'sup') {
+              format.superscript = true;
+            }
+            if (tagName === 'sub') {
+              format.subscript = true;
+            }
+            if (tagName && tagName.startsWith('h') && tagName.length === 2) {
+              const level = parseInt(tagName[1], 10);
+              if (!Number.isNaN(level)) {
+                format.headingLevel =
+                  format.headingLevel === null
+                    ? level
+                    : Math.min(format.headingLevel, level);
+              }
+            }
+
+            current = current?.parentElement;
+          }
+
+          return format;
+        }
+
+        function styleSections() {
+          if (!elements.textContent) {
+            return;
+          }
+
+          elements.textContent.querySelectorAll('h2').forEach((heading) => {
+            heading.style.color = '#202122';
+            heading.style.fontFamily = 'serif';
+            heading.style.fontSize = '1.5rem';
+            heading.style.marginTop = '1.5rem';
+            heading.style.marginBottom = '0.5rem';
+            heading.style.borderBottom = '1px solid #a2a9b1';
+            heading.style.paddingBottom = '0.25rem';
+          });
+
+          elements.textContent.querySelectorAll('h3').forEach((heading) => {
+            heading.style.color = '#202122';
+            heading.style.fontFamily = 'serif';
+            heading.style.fontSize = '1.25rem';
+            heading.style.marginTop = '1.25rem';
+            heading.style.marginBottom = '0.25rem';
+          });
+        }
+
+        window.addEventListener('message', (event) => {
+          const pluginMessage = event.data?.pluginMessage;
+          if (!pluginMessage) {
+            return;
+          }
+
+          if (pluginMessage.type === 'showLoading') {
+            setLoadingIndicator(pluginMessage.show === true);
+          }
+        });
+
+        if (elements.tabImage) {
+          elements.tabImage.addEventListener('click', (event) => {
+            event.preventDefault();
+            switchTab(TAB_IMAGE);
+          });
+        }
+
+        if (elements.tabText) {
+          elements.tabText.addEventListener('click', (event) => {
+            event.preventDefault();
+            switchTab(TAB_TEXT);
+          });
+        }
+
+        if (elements.imageSearchButton) {
+          elements.imageSearchButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            handleImageSearch();
+          });
+        }
+
+        if (elements.textSearchButton) {
+          elements.textSearchButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            handleTextSearch();
+          });
+        }
+
+        if (elements.imageQueryInput) {
+          elements.imageQueryInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              handleImageSearch();
+            }
+          });
+        }
+
+        if (elements.textQueryInput) {
+          elements.textQueryInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              handleTextSearch();
+            }
+          });
+        }
+
+        switchTab(TAB_IMAGE);
+      });
     </script>
   </head>
   <body class="font-sans p-4">
@@ -231,21 +707,21 @@ function showLoadingIndicator(show) {
     </div>
     <h2 class="text-2xl font-bold mb-1">Commons & Wikipedia Search</h2>
     <nav class="-mb-px flex space-x-8" aria-label="Tabs">
-      <a href="#" class="whitespace-nowrap py-2 px-1 font-medium text-sm text-blue-600 border-b-2 border-blue-500" id="tab-image" aria-current="page" onclick="switchTabs('tab-image')">Image</a>
-      <a href="#" class="whitespace-nowrap py-2 px-1 font-medium text-sm text-gray-500" id="tab-text" onclick="switchTabs('tab-text')">Text</a>
+      <a href="#" class="whitespace-nowrap py-2 px-1 font-medium text-sm text-blue-600 border-b-2 border-blue-500" id="tab-image" data-tab="image" aria-current="page">Image</a>
+      <a href="#" class="whitespace-nowrap py-2 px-1 font-medium text-sm text-gray-500 border-b-2 border-transparent" id="tab-text" data-tab="text" aria-current="false">Text</a>
     </nav>
     <div class="tab-content">
       <div id="tab-image-content">
         <div class="flex items-center space-x-2 mb-2 mt-4">
           <input type="text" id="search-query" class="border border-gray-300 p-2 rounded w-full focus:border-orange-500" placeholder="Search images..." />
-          <button onclick="searchImages()" class="bg-blue-500 text-white px-4 py-2 rounded">Search</button>
+          <button id="search-image-button" class="bg-blue-500 text-white px-4 py-2 rounded">Search</button>
         </div>
         <div id="search-results" class="mt-4 grid grid-cols-1 gap-4"></div>
       </div>
       <div id="tab-text-content" class="hidden">
         <div class="flex items-center space-x-2 mb-2 mt-4">
           <input type="text" id="text-search-query" class="border border-gray-300 p-2 rounded w-full focus:border-orange-500" placeholder="Search Wikipedia..." />
-          <button onclick="searchWikipedia()" class="bg-blue-500 text-white px-4 py-2 rounded">Search</button>
+          <button id="search-text-button" class="bg-blue-500 text-white px-4 py-2 rounded">Search</button>
         </div>
         <h3 id="text-search-title" class="text-xl font-bold mt-4"></h3>
         <div id="text-search-content" class="mt-4"></div>
@@ -253,4 +729,3 @@ function showLoadingIndicator(show) {
     </div>
   </body>
 </html>
-
